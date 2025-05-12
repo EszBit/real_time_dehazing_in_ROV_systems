@@ -1,0 +1,23 @@
+
+# dataset info
+dataset_name: "target_dataset"
+dataset_path: "./data/paired/"
+
+# image info
+chans: 3
+
+# for higher quality
+#im_width: 256
+#im_height: 256
+
+# for quicker training
+im_width: 128
+im_height: 128
+
+# other params
+val_interval: 100 # steps
+ckpt_interval: 5  # epochs
+
+
+
+ 
