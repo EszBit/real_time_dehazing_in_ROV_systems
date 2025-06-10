@@ -11,6 +11,9 @@ import yaml
 import argparse
 import numpy as np
 from PIL import Image
+import time
+import psutil
+import csv
 # pytorch libs
 import torch
 import torch.nn as nn
@@ -27,13 +30,13 @@ from utils.data_utils import GetTrainingPairs, GetValImage
 import matplotlib.pyplot as plt
 
 
-#print(torch.backends.mps.is_available())
-#print(torch.backends.mps.is_built())
+print(torch.backends.mps.is_available())
+print(torch.backends.mps.is_built())
 
 
 if __name__ == "__main__":
 
-    ## get configs and training options
+    # Get configs and training options
     parser = argparse.ArgumentParser()
     parser.add_argument("--cfg_file", type=str, default="configs/train_target.yaml")
     #parser.add_argument("--cfg_file", type=str, default="configs/train_ufo.yaml")
@@ -45,18 +48,19 @@ if __name__ == "__main__":
     parser.add_argument("--b2", type=float, default=0.99, help="adam: decay of 2nd order momentum")
     args = parser.parse_args()
 
+    # Set device to MPS if available, else CPU
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-    print(torch.backends.mps.is_available())
+    print(f"Using device: {device}")
 
-    ## training params
+    # Training params
     epoch = args.epoch
     num_epochs = args.num_epochs
     batch_size =  args.batch_size
     lr_rate, lr_b1, lr_b2 = args.lr, args.b1, args.b2
-    # load the data config file
+    # Load the data config file
     with open(args.cfg_file) as f:
         cfg = yaml.load(f, Loader=yaml.FullLoader)
-    # get info from config file
+    # Get info from config file
     dataset_name = cfg["dataset_name"]
     dataset_path = cfg["dataset_path"]
     channels = cfg["chans"]
@@ -69,15 +73,14 @@ if __name__ == "__main__":
     loss_D_list = []
 
 
-    ## create dir for model and validation data
+    # Create dir for model and validation data
     samples_dir = os.path.join("samples_finetune/", dataset_name)
     checkpoint_dir = os.path.join("checkpoints_finetune/", dataset_name)
     os.makedirs(samples_dir, exist_ok=True)
     os.makedirs(checkpoint_dir, exist_ok=True)
 
 
-    """ FunieGAN specifics: loss functions and patch-size
-    -----------------------------------------------------"""
+    """ FunieGAN specifics: loss functions and patch-size"""
     Adv_cGAN = torch.nn.MSELoss()
     L1_G  = torch.nn.L1Loss() # similarity loss (l1)
     L_vgg = VGG19_PercepLoss() # content loss (vgg)
@@ -97,21 +100,30 @@ if __name__ == "__main__":
         return torch.abs(mean_r - mean_g) + torch.abs(mean_r - mean_b) + torch.abs(mean_g - mean_b)
 
     # see if cuda is available
-    if torch.cuda.is_available():
-        #generator = generator.cuda()
-        generator = generator.to(device)
-        discriminator = discriminator.cuda()
-        Adv_cGAN.cuda()
-        L1_G = L1_G.cuda()
-        L_vgg = L_vgg.cuda()
-        Tensor = torch.cuda.FloatTensor
-    else:
-        Tensor = torch.FloatTensor
+    # if torch.cuda.is_available():
+    #     #generator = generator.cuda()
+    #     generator = generator.to(device)
+    #     discriminator = discriminator.cuda()
+    #     Adv_cGAN.cuda()
+    #     L1_G = L1_G.cuda()
+    #     L_vgg = L_vgg.cuda()
+    #     Tensor = torch.cuda.FloatTensor
+    # else:
+    #     Tensor = torch.FloatTensor
+
+    # Move everything to device
+    generator = generator.to(device)
+    discriminator = discriminator.to(device)
+    Adv_cGAN = Adv_cGAN.to(device)
+    L1_G = L1_G.to(device)
+    L_vgg = L_vgg.to(device)
+
+    #Tensor = torch.FloatTensor if device.type == "cpu" else torch.FloatTensor  # MPS still uses FloatTensor
 
     # Initialize weights or load pretrained models
     if args.epoch == 0:
         print("Loading pretrained generator...")
-        generator.load_state_dict(torch.load("models/funie_generator.pth", map_location=device))
+        generator.load_state_dict(torch.load("models/generator_final.pth", map_location=device))
         discriminator.apply(Weights_Normal)
     else:
         generator.load_state_dict(torch.load("checkpoints/FunieGAN/%s/generator_%d.pth" % (dataset_name, args.epoch)))
@@ -123,7 +135,7 @@ if __name__ == "__main__":
     optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=lr_rate, betas=(lr_b1, lr_b2))
 
 
-    ## Data pipeline
+    # Data pipeline
     transforms_ = [
         transforms.Resize((img_height, img_width), Image.BICUBIC),
         transforms.ToTensor(),
@@ -146,16 +158,28 @@ if __name__ == "__main__":
 
 
     ## Training pipeline
+    start_time = time.time()
     for epoch in range(epoch, num_epochs):
+        epoch_start = time.time()
+
+        # Monitoring
+        cpu_percent = psutil.cpu_percent(interval=1)
+        memory = psutil.virtual_memory()
+        print(f"\n[Epoch {epoch}] CPU usage: {cpu_percent}%, RAM usage: {memory.percent}%")
+
         for i, batch in enumerate(dataloader):
             # Model inputs
-            imgs_distorted = Variable(batch["A"].type(Tensor))
-            imgs_good_gt = Variable(batch["B"].type(Tensor))
+            # imgs_distorted = Variable(batch["A"].type(Tensor))
+            # imgs_good_gt = Variable(batch["B"].type(Tensor))
+            imgs_distorted = batch["A"].to(device)
+            imgs_good_gt = batch["B"].to(device)
             # Adversarial ground truths
-            valid = Variable(Tensor(np.ones((imgs_distorted.size(0), *patch))), requires_grad=False)
-            fake = Variable(Tensor(np.zeros((imgs_distorted.size(0), *patch))), requires_grad=False)
+            #valid = Variable(Tensor(np.ones((imgs_distorted.size(0), *patch))), requires_grad=False)
+            #fake = Variable(Tensor(np.zeros((imgs_distorted.size(0), *patch))), requires_grad=False)
+            valid = torch.ones((imgs_distorted.size(0), *patch), device=device, requires_grad=False)
+            fake = torch.zeros((imgs_distorted.size(0), *patch), device=device, requires_grad=False)
 
-            ## Train Discriminator
+            # Train Discriminator
             optimizer_D.zero_grad()
             imgs_fake = generator(imgs_distorted)
             pred_real = discriminator(imgs_good_gt, imgs_distorted)
@@ -168,7 +192,7 @@ if __name__ == "__main__":
             loss_D.backward()
             optimizer_D.step()
 
-            ## Train Generator
+            # Train Generator
             optimizer_G.zero_grad()
             imgs_fake = generator(imgs_distorted)
             pred_fake = discriminator(imgs_fake, imgs_distorted)
@@ -203,7 +227,7 @@ if __name__ == "__main__":
             loss_D_list.append(loss_D.item())
             loss_G_list.append(loss_G.item())
 
-            ## Print log
+            # Print log
             if not i%50:
                 sys.stdout.write("\r[Epoch %d/%d: batch %d/%d] [DLoss: %.3f, GLoss: %.3f, AdvLoss: %.3f]"
                                   %(
@@ -211,16 +235,24 @@ if __name__ == "__main__":
                                     loss_D.item(), loss_G.item(), loss_GAN.item(),
                                    )
                 )
-            ## If at sample interval save image
+            # If at sample interval save image
             batches_done = epoch * len(dataloader) + i
             if batches_done % val_interval == 0:
                 imgs = next(iter(val_dataloader))
-                imgs_val = Variable(imgs["val"].type(Tensor))
+                #imgs_val = Variable(imgs["val"].type(Tensor))
+                imgs_val = imgs["val"].to(device)
                 imgs_gen = generator(imgs_val)
                 img_sample = torch.cat((imgs_val.data, imgs_gen.data), -2)
                 save_image(img_sample, "samples_finetune/%s/%s.png" % (dataset_name, batches_done), nrow=5, normalize=True)
 
-        ## Save model checkpoints
+        epoch_time = time.time() - epoch_start
+        print(f"Epoch {epoch} time: {epoch_time:.2f} seconds")
+
+        with open("performance_log.csv", mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([epoch, epoch_time, cpu_percent, memory.percent])
+
+        # Save model checkpoints
         if (epoch % ckpt_interval == 0):
             torch.save(generator.state_dict(), "checkpoints_finetune/%s/generator_%d.pth" % (dataset_name, epoch))
             torch.save(discriminator.state_dict(), "checkpoints_finetune/%s/discriminator_%d.pth" % (dataset_name, epoch))

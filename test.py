@@ -22,11 +22,11 @@ import torchvision.transforms as transforms
 
 ## options
 parser = argparse.ArgumentParser()
-parser.add_argument("--data_dir", type=str, default="data/test/2025_04_10_14_45_31/")
+parser.add_argument("--data_dir", type=str, default="data/test/NorthWestCorner1/")
 parser.add_argument("--sample_dir", type=str, default="data/output/")
 parser.add_argument("--model_name", type=str, default="funiegan") # or "ugan"
-#parser.add_argument("--model_path", type=str, default="models/funie_generator.pth")
-parser.add_argument("--model_path", type=str, default="models/generator_20.pth")
+parser.add_argument("--model_path", type=str, default="models/funie_generator.pth")
+#parser.add_argument("--model_path", type=str, default="models/generator_20.pth")
 opt = parser.parse_args()
 
 ## checks

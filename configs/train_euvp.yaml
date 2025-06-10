@@ -7,14 +7,14 @@ dataset_path: "./data/paired/"
 chans: 3
 
 # for higher quality
-#im_width: 256
-#im_height: 256
+im_width: 256
+im_height: 256
 
 # for quicker training
-im_width: 128
-im_height: 128
+#im_width: 128
+#im_height: 128
 
-# other params
+# other parameters
 val_interval: 1000 # steps
 ckpt_interval: 3
 

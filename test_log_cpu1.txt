@@ -1,0 +1,1 @@
+Device: cpu, Avg FPS: 17.662, Avg Time per image: 0.0566 sec
