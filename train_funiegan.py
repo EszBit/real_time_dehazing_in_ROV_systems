@@ -40,13 +40,13 @@ if __name__ == "__main__":
     parser.add_argument("--num_epochs", type=int, default=201, help="number of epochs of training")
     parser.add_argument("--batch_size", type=int, default=8, help="size of the batches")
     # learning rate was 0.0003, changed to 0.0001
-    parser.add_argument("--lr", type=float, default=0.0001, help="adam: learning rate")
+    parser.add_argument("--lr", type=float, default=0.0003, help="adam: learning rate")
     parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of 1st order momentum")
     parser.add_argument("--b2", type=float, default=0.99, help="adam: decay of 2nd order momentum")
     args = parser.parse_args()
 
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-    print(torch.backends.mps.is_available())
+    print(f"Using device: {device}")
 
     ## training params
     epoch = args.epoch
@@ -71,7 +71,7 @@ if __name__ == "__main__":
 
     ## create dir for model and validation data
     samples_dir = os.path.join("samples/FunieGAN/", dataset_name)
-    checkpoint_dir = os.path.join("checkpoints/FunieGAN/", dataset_name)
+    checkpoint_dir = os.path.join("checkpoints/", dataset_name)
     os.makedirs(samples_dir, exist_ok=True)
     os.makedirs(checkpoint_dir, exist_ok=True)
 
@@ -89,32 +89,26 @@ if __name__ == "__main__":
     discriminator = DiscriminatorFunieGAN()
 
     # Color balance loss function
-    def color_balance_loss(img):
+    #def color_balance_loss(img):
         # img: (B, 3, H, W)
-        mean_r = img[:, 0, :, :].mean()
-        mean_g = img[:, 1, :, :].mean()
-        mean_b = img[:, 2, :, :].mean()
-        return torch.abs(mean_r - mean_g) + torch.abs(mean_r - mean_b) + torch.abs(mean_g - mean_b)
+        #mean_r = img[:, 0, :, :].mean()
+        #mean_g = img[:, 1, :, :].mean()
+        #mean_b = img[:, 2, :, :].mean()
+        #return torch.abs(mean_r - mean_g) + torch.abs(mean_r - mean_b) + torch.abs(mean_g - mean_b)
 
-    # see if cuda is available
-    if torch.cuda.is_available():
-        #generator = generator.cuda()
-        generator = generator.to(device)
-        discriminator = discriminator.cuda()
-        Adv_cGAN.cuda()
-        L1_G = L1_G.cuda()
-        L_vgg = L_vgg.cuda()
-        Tensor = torch.cuda.FloatTensor
-    else:
-        Tensor = torch.FloatTensor
+    generator = generator.to(device)
+    discriminator = discriminator.to(device)
+    Adv_cGAN = Adv_cGAN.to(device)
+    L1_G = L1_G.to(device)
+    L_vgg = L_vgg.to(device)
 
     # Initialize weights or load pretrained models
     if args.epoch == 0:
         generator.apply(Weights_Normal)
         discriminator.apply(Weights_Normal)
     else:
-        generator.load_state_dict(torch.load("checkpoints/FunieGAN/%s/generator_%d.pth" % (dataset_name, args.epoch)))
-        discriminator.load_state_dict(torch.load("checkpoints/FunieGAN/%s/discriminator_%d.pth" % (dataset_name, epoch)))
+        generator.load_state_dict(torch.load("checkpoints/%s/generator_%d.pth" % (dataset_name, args.epoch)))
+        discriminator.load_state_dict(torch.load("checkpoints/%s/discriminator_%d.pth" % (dataset_name, epoch)))
         print ("Loaded model from epoch %d" %(epoch))
 
     # Optimizers
@@ -148,11 +142,13 @@ if __name__ == "__main__":
     for epoch in range(epoch, num_epochs):
         for i, batch in enumerate(dataloader):
             # Model inputs
-            imgs_distorted = Variable(batch["A"].type(Tensor))
-            imgs_good_gt = Variable(batch["B"].type(Tensor))
+            imgs_distorted = batch["A"].to(device)
+            imgs_good_gt = batch["B"].to(device)
             # Adversarial ground truths
-            valid = Variable(Tensor(np.ones((imgs_distorted.size(0), *patch))), requires_grad=False)
-            fake = Variable(Tensor(np.zeros((imgs_distorted.size(0), *patch))), requires_grad=False)
+            valid = torch.ones((imgs_distorted.size(0), *patch), device=device, dtype=torch.float32,
+                               requires_grad=False)
+            fake = torch.zeros((imgs_distorted.size(0), *patch), device=device, dtype=torch.float32,
+                               requires_grad=False)
 
             ## Train Discriminator
             optimizer_D.zero_grad() # clears prev. computed gradients
@@ -175,11 +171,12 @@ if __name__ == "__main__":
             loss_con = L_vgg(imgs_fake, imgs_good_gt)# content loss
 
             # New color balance loss
-            loss_color = color_balance_loss(imgs_fake)
+            #loss_color = color_balance_loss(imgs_fake)
 
             # Update total generator loss (adding color balance loss with a small weight)
             lambda_color = 1.5
-            loss_G = loss_GAN + lambda_1 * loss_1 + lambda_con * loss_con + lambda_color * loss_color
+            #loss_G = loss_GAN + lambda_1 * loss_1 + lambda_con * loss_con + lambda_color * loss_color
+            loss_G = loss_GAN + lambda_1 * loss_1 + lambda_con * loss_con
             # Total loss (Section 3.2.1 in the paper)
             # loss_G = loss_GAN + lambda_1 * loss_1  + lambda_con * loss_con
             loss_G.backward()
@@ -201,7 +198,7 @@ if __name__ == "__main__":
             batches_done = epoch * len(dataloader) + i
             if batches_done % val_interval == 0:
                 imgs = next(iter(val_dataloader))
-                imgs_val = Variable(imgs["val"].type(Tensor))
+                imgs_val = imgs["val"].to(device)
                 imgs_gen = generator(imgs_val)
                 img_sample = torch.cat((imgs_val.data, imgs_gen.data), -2)
                 save_image(img_sample, "samples/FunieGAN/%s/%s.png" % (dataset_name, batches_done), nrow=5, normalize=True)

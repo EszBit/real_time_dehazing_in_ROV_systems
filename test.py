@@ -53,7 +53,8 @@ model.eval()
 print ("Loaded model from %s" % (opt.model_path))
 
 ## data pipeline
-img_width, img_height, channels = 256, 256, 3
+#img_width, img_height, channels = 256, 256, 3
+img_width, img_height, channels = 1920, 1200, 3
 transforms_ = [transforms.Resize((img_height, img_width), Image.BICUBIC),
                transforms.ToTensor(),
                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),]

@@ -7,8 +7,8 @@ dataset_path: "./data/target_dataset/"
 chans: 3
 
 # for higher quality
-im_width: 256
-im_height: 256
+im_width: 640
+im_height: 384
 
 # for quicker training
 #im_width: 128

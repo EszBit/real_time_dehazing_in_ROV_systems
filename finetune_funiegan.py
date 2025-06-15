@@ -92,12 +92,12 @@ if __name__ == "__main__":
     discriminator = DiscriminatorFunieGAN()
 
     # Color balance loss function
-    def color_balance_loss(img):
-        # img: (B, 3, H, W)
-        mean_r = img[:, 0, :, :].mean()
-        mean_g = img[:, 1, :, :].mean()
-        mean_b = img[:, 2, :, :].mean()
-        return torch.abs(mean_r - mean_g) + torch.abs(mean_r - mean_b) + torch.abs(mean_g - mean_b)
+    # def color_balance_loss(img):
+    #     # img: (B, 3, H, W)
+    #     mean_r = img[:, 0, :, :].mean()
+    #     mean_g = img[:, 1, :, :].mean()
+    #     mean_b = img[:, 2, :, :].mean()
+    #     return torch.abs(mean_r - mean_g) + torch.abs(mean_r - mean_b) + torch.abs(mean_g - mean_b)
 
     # see if cuda is available
     # if torch.cuda.is_available():
@@ -208,17 +208,18 @@ if __name__ == "__main__":
 
             # --- 💡 Color Balance Loss ---
             # Compute the mean value per channel
-            mean_channels = torch.mean(imgs_fake, dim=[2, 3])  # (batch_size, 3)
-            mean_r = mean_channels[:, 0]
-            mean_g = mean_channels[:, 1]
-            mean_b = mean_channels[:, 2]
-
-            # Color loss: encourages balanced RGB intensities
-            loss_color = torch.mean((mean_r - mean_g) ** 2 + (mean_r - mean_b) ** 2 + (mean_g - mean_b) ** 2)
+            # mean_channels = torch.mean(imgs_fake, dim=[2, 3])  # (batch_size, 3)
+            # mean_r = mean_channels[:, 0]
+            # mean_g = mean_channels[:, 1]
+            # mean_b = mean_channels[:, 2]
+            #
+            # # Color loss: encourages balanced RGB intensities
+            # loss_color = torch.mean((mean_r - mean_g) ** 2 + (mean_r - mean_b) ** 2 + (mean_g - mean_b) ** 2)
 
             # Combine all losses
             lambda_color = 5  # 🔧 Adjust this to control red-correction strength
-            loss_G = loss_GAN + lambda_1 * loss_1 + lambda_con * loss_con + lambda_color * loss_color
+            #loss_G = loss_GAN + lambda_1 * loss_1 + lambda_con * loss_con + lambda_color * loss_color
+            loss_G = loss_GAN + lambda_1 * loss_1 + lambda_con * loss_con
 
             # Backward + update
             loss_G.backward()
