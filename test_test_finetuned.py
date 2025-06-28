@@ -23,7 +23,7 @@ parser.add_argument("--model_name", type=str, default="funiegan")
 parser.add_argument("--model_path", type=str, default="models/finetuned_color/generator_final.pth")
 parser.add_argument("--model_label", type=str, default="finetuned")
 #parser.add_argument("--resolution", type=str, default="1280x768")
-parser.add_argument("--device", type=str, default="mps")  # or "cpu"
+parser.add_argument("--device", type=str, default="mps")  # "mps" or "cpu"
 parser.add_argument("--csv_path", type=str, default="results/benchmark_results.csv")
 parser.add_argument("--overwrite_csv", action="store_true", help="Clear CSV before logging")
 args = parser.parse_args()

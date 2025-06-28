@@ -17,5 +17,6 @@ samples/
 samples_finetune/
 logs/
 venv/
+results/
 # files
 *.onnx
