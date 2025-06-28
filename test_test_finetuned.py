@@ -13,6 +13,7 @@ import csv
 import torch
 from torchvision.utils import save_image
 import torchvision.transforms as transforms
+import torch.nn.functional as F
 
 # === Argument Parsing
 parser = argparse.ArgumentParser()
@@ -21,7 +22,7 @@ parser.add_argument("--sample_dir", type=str, default="data/output/final_test_re
 parser.add_argument("--model_name", type=str, default="funiegan")
 parser.add_argument("--model_path", type=str, default="models/finetuned_color/generator_final.pth")
 parser.add_argument("--model_label", type=str, default="finetuned")
-parser.add_argument("--resolution", type=str, default="1280x768")
+#parser.add_argument("--resolution", type=str, default="1280x768")
 parser.add_argument("--device", type=str, default="mps")  # or "cpu"
 parser.add_argument("--csv_path", type=str, default="results/benchmark_results.csv")
 parser.add_argument("--overwrite_csv", action="store_true", help="Clear CSV before logging")
@@ -52,13 +53,22 @@ os.makedirs(args.sample_dir, exist_ok=True)
 os.makedirs(os.path.dirname(args.csv_path), exist_ok=True)
 
 # === Image transforms
-img_width, img_height = map(int, args.resolution.split('x'))
+#img_width, img_height = map(int, args.resolution.split('x'))
 transforms_ = [
-    transforms.Resize((img_height, img_width), Image.BICUBIC),
+    #transforms.Resize((img_height, img_width), Image.BICUBIC),
     transforms.ToTensor(),
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
 ]
 transform = transforms.Compose(transforms_)
+
+# === Padding function ===
+def pad_to_multiple(tensor, multiple=32):
+    # tensor shape: (C, H, W)
+    _, h, w = tensor.shape
+    pad_h = (multiple - h % multiple) % multiple
+    pad_w = (multiple - w % multiple) % multiple
+    padded_tensor = F.pad(tensor, (0, pad_w, 0, pad_h), mode='reflect')
+    return padded_tensor, h, w
 
 # === Test loop
 times = []
@@ -70,10 +80,14 @@ print(f"[START] CPU: {cpu_start}%, RAM: {ram_start}%")
 
 for path in test_files:
     inp_img = transform(Image.open(path))
+    inp_img, h, w = pad_to_multiple(inp_img, multiple=32)  # adding padding here
     inp_img = inp_img.to(device).unsqueeze(0)
+
     start = time.time()
     gen_img = model(inp_img)
+    gen_img = gen_img[:, :, :h, :w]  # crop padded output back
     times.append(time.time() - start)
+
     save_image(gen_img.data, join(args.sample_dir, basename(path)), normalize=True)
     print(f"Tested: {path}")
 
@@ -103,11 +117,12 @@ if len(times) > 1:
     with open(args.csv_path, mode=mode, newline='') as f:
         writer = csv.writer(f)
         if write_header:
-            writer.writerow(["Model", "Device", "Resolution", "FPS", "TimePerImage", "CPU%", "RAM%"])
+            #writer.writerow(["Model", "Device", "Resolution", "FPS", "TimePerImage", "CPU%", "RAM%"])
+            writer.writerow(["Model", "Device", "FPS", "TimePerImage", "CPU%", "RAM%"])
         writer.writerow([
             args.model_label,
             args.device,
-            args.resolution,
+            #args.resolution,
             round(avg_fps, 3),
             round(avg_time, 4),
             cpu_end,
