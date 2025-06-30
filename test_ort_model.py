@@ -15,26 +15,24 @@ from torchvision.utils import save_image
 import torch.nn.functional as F
 import torch
 
-
 # === Argument Parsing
 parser = argparse.ArgumentParser()
 parser.add_argument("--data_dir", type=str, default="data/test/final_test/")
 parser.add_argument("--sample_dir", type=str, default="data/output/final_test_results/test_onnx")
-parser.add_argument("--model_path", type=str, default="models/onnx/funiegan_model_optimized.onnx")
-parser.add_argument("--device", type=str, default="cpu")  # "cpu" or "mps"
-parser.add_argument("--csv_path", type=str, default="results/benchmark_results_onnx_int8.csv")
+parser.add_argument("--model_path", type=str, default="funiegan_model_ort/funiegan_model_optimized.ort")
+parser.add_argument("--csv_path", type=str, default="benchmark_results_ort.csv")
 parser.add_argument("--overwrite_csv", action="store_true", help="Clear CSV before logging")
 args = parser.parse_args()
 
 # === Setup
 os.makedirs(args.sample_dir, exist_ok=True)
-os.makedirs(os.path.dirname(args.csv_path), exist_ok=True)
+#os.makedirs(os.path.dirname(args.csv_path), exist_ok=True)
 
-# === ONNX Runtime Session
-providers = ["CPUExecutionProvider"] if args.device == "cpu" else ["CoreMLExecutionProvider"]
-sess = ort.InferenceSession(args.model_path, providers=providers)
+# === ORT Runtime Session (CPU only)
+sess = ort.InferenceSession(args.model_path, providers=["CPUExecutionProvider"])
 input_name = sess.get_inputs()[0].name
-print(f"Using device: {args.device}, input name: {input_name}")
+print(f"Loaded model: {args.model_path}")
+print(f"Input tensor name: {input_name}")
 
 # === Transforms
 transform = transforms.Compose([
@@ -58,26 +56,21 @@ ram_start = psutil.virtual_memory().percent
 print(f"[START] CPU: {cpu_start}%, RAM: {ram_start}%")
 
 for path in test_files:
-    img = Image.open(path)
-
-    # === Resize to 1280x800 before transform
-    img = img.resize((960, 600), Image.BICUBIC)
+    img = Image.open(path).convert("RGB")
+    img = img.resize((1920, 1200), Image.BICUBIC)
 
     img_tensor = transform(img)
     img_tensor, h, w = pad_to_multiple(img_tensor)
-    img_tensor = img_tensor.unsqueeze(0).numpy()  # to (1, 3, H, W) numpy
+    img_tensor = img_tensor.unsqueeze(0).numpy()
 
     start = time.time()
-    output = sess.run(None, {input_name: img_tensor})[0]  # (1, 3, H, W)
+    output = sess.run(None, {input_name: img_tensor})[0]
     times.append(time.time() - start)
 
-    # Crop back to original size
     output = torch.from_numpy(output)
     output = output[:, :, :h, :w]
-
     save_image(output, join(args.sample_dir, basename(path)), normalize=True)
-    print(f"Tested: {path}")
-
+    print(f"Processed: {basename(path)}")
 
 # === Summary
 if len(times) > 1:
@@ -87,24 +80,23 @@ if len(times) > 1:
     cpu_end = psutil.cpu_percent(interval=1)
     ram_end = psutil.virtual_memory().percent
 
-    print("\n=== ONNX Test Summary ===")
+    print("\n=== ORT Model Benchmark Summary ===")
     print(f"Total images: {len(test_files)}")
     print(f"Avg time/image: {avg_time:.4f} sec")
     print(f"Avg FPS: {avg_fps:.2f}")
     print(f"[END] CPU: {cpu_end}%, RAM: {ram_end}%")
-    print("====================\n")
+    print("===================================")
 
-    write_header = args.overwrite_csv or not os.path.exists(args.csv_path)
-    mode = 'w' if args.overwrite_csv else 'a'
-    with open(args.csv_path, mode=mode, newline='') as f:
-        writer = csv.writer(f)
-        if write_header:
-            writer.writerow(["Model", "Device", "FPS", "TimePerImage", "CPU%", "RAM%"])
-        writer.writerow([
-            "ONNX_Model",
-            args.device,
-            round(avg_fps, 3),
-            round(avg_time, 4),
-            cpu_end,
-            ram_end
-        ])
+    # write_header = args.overwrite_csv or not os.path.exists(args.csv_path)
+    # mode = 'w' if args.overwrite_csv else 'a'
+    # with open(args.csv_path, mode=mode, newline='') as f:
+    #     writer = csv.writer(f)
+    #     if write_header:
+    #         writer.writerow(["Model", "FPS", "TimePerImage", "CPU%", "RAM%"])
+    #     writer.writerow([
+    #         os.path.basename(args.model_path),
+    #         round(avg_fps, 3),
+    #         round(avg_time, 4),
+    #         cpu_end,
+    #         ram_end
+    #     ])

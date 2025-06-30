@@ -18,5 +18,7 @@ samples_finetune/
 logs/
 venv/
 results/
+funiegan_model_ort/
+
 # files
 *.onnx
