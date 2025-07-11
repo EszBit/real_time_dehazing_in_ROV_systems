@@ -10,15 +10,16 @@ model.load_state_dict(torch.load("models/finetuned_color/generator_final.pth", m
 model.eval()
 
 dummy_input = torch.randn(1, 3, 256, 256)
-#torch.onnx.export(model, dummy_input, "funiegan.onnx", input_names=['input'], output_names=['output'], opset_version=11)
 
+traced = torch.jit.trace(model, dummy_input)
 torch.onnx.export(
-    model,
+    traced,
     dummy_input,
     "funiegan_model_dynamic.onnx",
     input_names=["input"],
     output_names=["output"],
+    export_params=True,
+    do_constant_folding=True,
     dynamic_axes={"input": {2: "height", 3: "width"}, "output": {2: "height", 3: "width"}},
     opset_version=11
 )
-

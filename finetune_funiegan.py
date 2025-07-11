@@ -1,37 +1,19 @@
-"""
- > Training pipeline for FUnIE-GAN (paired) model
-   * Paper: arxiv.org/pdf/1903.09766.pdf
- > Maintainer: https://github.com/xahidbuffon
-"""
-# py libs
 import os
-import glob
 import sys
 import yaml
 import argparse
-import numpy as np
 from PIL import Image
 import time
 import psutil
 import csv
-# pytorch libs
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torchvision import datasets
 from torchvision.utils import save_image
 from torch.utils.data import DataLoader
-from torch.autograd import Variable
 import torchvision.transforms as transforms
-# local libs
 from nets.commons import Weights_Normal, VGG19_PercepLoss
 from nets.funiegan import GeneratorFunieGAN, DiscriminatorFunieGAN
 from utils.data_utils import GetTrainingPairs, GetValImage
 import matplotlib.pyplot as plt
-
-
-print(torch.backends.mps.is_available())
-print(torch.backends.mps.is_built())
 
 
 if __name__ == "__main__":
@@ -39,23 +21,29 @@ if __name__ == "__main__":
     # Get configs and training options
     parser = argparse.ArgumentParser()
     parser.add_argument("--cfg_file", type=str, default="configs/train_target.yaml")
-    #parser.add_argument("--cfg_file", type=str, default="configs/train_ufo.yaml")
     parser.add_argument("--epoch", type=int, default=0, help="which epoch to start from")
     parser.add_argument("--num_epochs", type=int, default=201, help="number of epochs of training")
     parser.add_argument("--batch_size", type=int, default=8, help="size of the batches")
     parser.add_argument("--lr", type=float, default=0.0003, help="adam: learning rate")
     parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of 1st order momentum")
     parser.add_argument("--b2", type=float, default=0.99, help="adam: decay of 2nd order momentum")
+    parser.add_argument("--device", type=str, default="mps", choices=["cpu", "mps"],
+                        help="Device to use for training")
     args = parser.parse_args()
 
-    # Set device to MPS if available, else CPU
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    if args.device == "mps":
+        if not torch.backends.mps.is_available():
+            raise RuntimeError("MPS device not available. Try using --device cpu")
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+
     print(f"Using device: {device}")
 
     # Training params
     epoch = args.epoch
     num_epochs = args.num_epochs
-    batch_size =  args.batch_size
+    batch_size = args.batch_size
     lr_rate, lr_b1, lr_b2 = args.lr, args.b1, args.b2
     # Load the data config file
     with open(args.cfg_file) as f:
@@ -91,34 +79,12 @@ if __name__ == "__main__":
     generator = GeneratorFunieGAN()
     discriminator = DiscriminatorFunieGAN()
 
-    # Color balance loss function
-    # def color_balance_loss(img):
-    #     # img: (B, 3, H, W)
-    #     mean_r = img[:, 0, :, :].mean()
-    #     mean_g = img[:, 1, :, :].mean()
-    #     mean_b = img[:, 2, :, :].mean()
-    #     return torch.abs(mean_r - mean_g) + torch.abs(mean_r - mean_b) + torch.abs(mean_g - mean_b)
-
-    # see if cuda is available
-    # if torch.cuda.is_available():
-    #     #generator = generator.cuda()
-    #     generator = generator.to(device)
-    #     discriminator = discriminator.cuda()
-    #     Adv_cGAN.cuda()
-    #     L1_G = L1_G.cuda()
-    #     L_vgg = L_vgg.cuda()
-    #     Tensor = torch.cuda.FloatTensor
-    # else:
-    #     Tensor = torch.FloatTensor
-
     # Move everything to device
     generator = generator.to(device)
     discriminator = discriminator.to(device)
     Adv_cGAN = Adv_cGAN.to(device)
     L1_G = L1_G.to(device)
     L_vgg = L_vgg.to(device)
-
-    #Tensor = torch.FloatTensor if device.type == "cpu" else torch.FloatTensor  # MPS still uses FloatTensor
 
     # Initialize weights or load pretrained models
     if args.epoch == 0:
@@ -133,7 +99,6 @@ if __name__ == "__main__":
     # Optimizers
     optimizer_G = torch.optim.Adam(generator.parameters(), lr=lr_rate, betas=(lr_b1, lr_b2))
     optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=lr_rate, betas=(lr_b1, lr_b2))
-
 
     # Data pipeline
     transforms_ = [
@@ -157,7 +122,7 @@ if __name__ == "__main__":
     )
 
 
-    ## Training pipeline
+    # Training pipeline
     start_time = time.time()
     for epoch in range(epoch, num_epochs):
         epoch_start = time.time()
@@ -169,13 +134,9 @@ if __name__ == "__main__":
 
         for i, batch in enumerate(dataloader):
             # Model inputs
-            # imgs_distorted = Variable(batch["A"].type(Tensor))
-            # imgs_good_gt = Variable(batch["B"].type(Tensor))
             imgs_distorted = batch["A"].to(device)
             imgs_good_gt = batch["B"].to(device)
             # Adversarial ground truths
-            #valid = Variable(Tensor(np.ones((imgs_distorted.size(0), *patch))), requires_grad=False)
-            #fake = Variable(Tensor(np.zeros((imgs_distorted.size(0), *patch))), requires_grad=False)
             valid = torch.ones((imgs_distorted.size(0), *patch), device=device, requires_grad=False)
             fake = torch.zeros((imgs_distorted.size(0), *patch), device=device, requires_grad=False)
 
@@ -206,20 +167,22 @@ if __name__ == "__main__":
             # Perceptual VGG content loss
             loss_con = L_vgg(imgs_fake, imgs_good_gt)
 
-            # --- 💡 Color Balance Loss ---
-            # Compute the mean value per channel
-            # mean_channels = torch.mean(imgs_fake, dim=[2, 3])  # (batch_size, 3)
-            # mean_r = mean_channels[:, 0]
-            # mean_g = mean_channels[:, 1]
-            # mean_b = mean_channels[:, 2]
-            #
-            # # Color loss: encourages balanced RGB intensities
-            # loss_color = torch.mean((mean_r - mean_g) ** 2 + (mean_r - mean_b) ** 2 + (mean_g - mean_b) ** 2)
+
+            # Color balance loss function
+            def color_balance_loss(img):
+                # img: (B, 3, H, W)
+                mean_r = img[:, 0, :, :].mean()
+                mean_g = img[:, 1, :, :].mean()
+                mean_b = img[:, 2, :, :].mean()
+                return torch.abs(mean_r - mean_g) + torch.abs(mean_r - mean_b) + torch.abs(mean_g - mean_b)
+
+            # Color loss: encourages balanced RGB intensities
+            loss_color = color_balance_loss(imgs_fake)
 
             # Combine all losses
-            lambda_color = 5  # 🔧 Adjust this to control red-correction strength
-            #loss_G = loss_GAN + lambda_1 * loss_1 + lambda_con * loss_con + lambda_color * loss_color
-            loss_G = loss_GAN + lambda_1 * loss_1 + lambda_con * loss_con
+            lambda_color = 3
+            loss_G = loss_GAN + lambda_1 * loss_1 + lambda_con * loss_con + lambda_color * loss_color
+            # loss_G = loss_GAN + lambda_1 * loss_1 + lambda_con * loss_con # no color balance loss function
 
             # Backward + update
             loss_G.backward()
@@ -236,11 +199,10 @@ if __name__ == "__main__":
                                     loss_D.item(), loss_G.item(), loss_GAN.item(),
                                    )
                 )
-            # If at sample interval save image
+
             batches_done = epoch * len(dataloader) + i
             if batches_done % val_interval == 0:
                 imgs = next(iter(val_dataloader))
-                #imgs_val = Variable(imgs["val"].type(Tensor))
                 imgs_val = imgs["val"].to(device)
                 imgs_gen = generator(imgs_val)
                 img_sample = torch.cat((imgs_val.data, imgs_gen.data), -2)
@@ -263,7 +225,7 @@ if __name__ == "__main__":
     plt.legend()
     plt.show()
 
-    # === Force final save ===
+    # === Force final save for safety ===
     torch.save(generator.state_dict(), "checkpoints_finetune/generator_final.pth")
     torch.save(discriminator.state_dict(), "checkpoints_finetune/discriminator_final.pth")
 

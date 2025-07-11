@@ -16,33 +16,33 @@ import torch.nn.functional as F
 import torch
 
 
-# === Argument Parsing
+# Argument Parsing
 parser = argparse.ArgumentParser()
 parser.add_argument("--data_dir", type=str, default="data/test/final_test/")
 parser.add_argument("--sample_dir", type=str, default="data/output/final_test_results/test_onnx")
-parser.add_argument("--model_path", type=str, default="models/onnx/funiegan_model_optimized.onnx")
+parser.add_argument("--model_path", type=str, default="models/onnx/funiegan_model_dynamic.onnx")
 parser.add_argument("--device", type=str, default="cpu")  # "cpu" or "mps"
-parser.add_argument("--csv_path", type=str, default="results/benchmark_results_onnx_int8.csv")
+parser.add_argument("--csv_path", type=str, default="results/benchmark_results_onnx_uint8.csv")
 parser.add_argument("--overwrite_csv", action="store_true", help="Clear CSV before logging")
 args = parser.parse_args()
 
-# === Setup
+# Setup
 os.makedirs(args.sample_dir, exist_ok=True)
 os.makedirs(os.path.dirname(args.csv_path), exist_ok=True)
 
-# === ONNX Runtime Session
+# ONNX Runtime Session
 providers = ["CPUExecutionProvider"] if args.device == "cpu" else ["CoreMLExecutionProvider"]
 sess = ort.InferenceSession(args.model_path, providers=providers)
 input_name = sess.get_inputs()[0].name
 print(f"Using device: {args.device}, input name: {input_name}")
 
-# === Transforms
+# Transforms
 transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
 ])
 
-# === Padding
+# Padding
 def pad_to_multiple(tensor, multiple=32):
     _, h, w = tensor.shape
     pad_h = (multiple - h % multiple) % multiple
@@ -50,7 +50,7 @@ def pad_to_multiple(tensor, multiple=32):
     padded_tensor = F.pad(tensor, (0, pad_w, 0, pad_h), mode='reflect')
     return padded_tensor, h, w
 
-# === Test Loop
+# Test Loop
 times = []
 test_files = sorted(glob(join(args.data_dir, "*.*")))
 cpu_start = psutil.cpu_percent(interval=1)
@@ -60,7 +60,7 @@ print(f"[START] CPU: {cpu_start}%, RAM: {ram_start}%")
 for path in test_files:
     img = Image.open(path)
 
-    # === Resize to 1280x800 before transform
+    # Resize before transform
     img = img.resize((960, 600), Image.BICUBIC)
 
     img_tensor = transform(img)
@@ -79,7 +79,7 @@ for path in test_files:
     print(f"Tested: {path}")
 
 
-# === Summary
+# Summary
 if len(times) > 1:
     total_time = np.sum(times[1:])
     avg_time = np.mean(times[1:])

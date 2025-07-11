@@ -3,52 +3,49 @@
    * Paper: arxiv.org/pdf/1903.09766.pdf
  > Maintainer: https://github.com/xahidbuffon
 """
-# py libs
 import os
 import sys
 import yaml
 import argparse
-import numpy as np
 from PIL import Image
-# pytorch libs
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torchvision import datasets
 from torchvision.utils import save_image
 from torch.utils.data import DataLoader
-from torch.autograd import Variable
 import torchvision.transforms as transforms
-# local libs
 from nets.commons import Weights_Normal, VGG19_PercepLoss
 from nets.funiegan import GeneratorFunieGAN, DiscriminatorFunieGAN
 from utils.data_utils import GetTrainingPairs, GetValImage
 import matplotlib.pyplot as plt
 
-
-#print(torch.backends.mps.is_available())
-#print(torch.backends.mps.is_built())
-
-
 if __name__ == "__main__":
 
-    ## get configs and training options
+    # get configs and training options
     parser = argparse.ArgumentParser()
     parser.add_argument("--cfg_file", type=str, default="configs/train_euvp.yaml")
-    #parser.add_argument("--cfg_file", type=str, default="configs/train_ufo.yaml")
     parser.add_argument("--epoch", type=int, default=0, help="which epoch to start from")
     parser.add_argument("--num_epochs", type=int, default=201, help="number of epochs of training")
     parser.add_argument("--batch_size", type=int, default=8, help="size of the batches")
-    # learning rate was 0.0003, changed to 0.0001
     parser.add_argument("--lr", type=float, default=0.0003, help="adam: learning rate")
     parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of 1st order momentum")
     parser.add_argument("--b2", type=float, default=0.99, help="adam: decay of 2nd order momentum")
+    parser.add_argument("--device", type=str, default="mps", choices=["cpu", "mps", "cuda"],
+                        help="Device to use for training")
     args = parser.parse_args()
 
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    if args.device == "mps":
+        if not torch.backends.mps.is_available():
+            raise RuntimeError("MPS device not available. Try using --device cpu")
+        device = torch.device("mps")
+    elif args.device == "cuda":
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA device not available. Try using --device cpu")
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+
     print(f"Using device: {device}")
 
-    ## training params
+    # training parameters
     epoch = args.epoch
     num_epochs = args.num_epochs
     batch_size =  args.batch_size
@@ -69,15 +66,14 @@ if __name__ == "__main__":
     loss_D_list = []
     loss_G_list = []
 
-    ## create dir for model and validation data
+    # Create directory for model and validation data
     samples_dir = os.path.join("samples/FunieGAN/", dataset_name)
     checkpoint_dir = os.path.join("checkpoints/", dataset_name)
     os.makedirs(samples_dir, exist_ok=True)
     os.makedirs(checkpoint_dir, exist_ok=True)
 
 
-    """ FunieGAN specifics: loss functions and patch-size
-    -----------------------------------------------------"""
+    """ FunieGAN specifics: loss functions and patch-size x"""
     Adv_cGAN = torch.nn.MSELoss()
     L1_G  = torch.nn.L1Loss() # similarity loss (l1)
     L_vgg = VGG19_PercepLoss() # content loss (vgg)
@@ -89,12 +85,12 @@ if __name__ == "__main__":
     discriminator = DiscriminatorFunieGAN()
 
     # Color balance loss function
-    #def color_balance_loss(img):
+    def color_balance_loss(img):
         # img: (B, 3, H, W)
-        #mean_r = img[:, 0, :, :].mean()
-        #mean_g = img[:, 1, :, :].mean()
-        #mean_b = img[:, 2, :, :].mean()
-        #return torch.abs(mean_r - mean_g) + torch.abs(mean_r - mean_b) + torch.abs(mean_g - mean_b)
+        mean_r = img[:, 0, :, :].mean()
+        mean_g = img[:, 1, :, :].mean()
+        mean_b = img[:, 2, :, :].mean()
+        return torch.abs(mean_r - mean_g) + torch.abs(mean_r - mean_b) + torch.abs(mean_g - mean_b)
 
     generator = generator.to(device)
     discriminator = discriminator.to(device)
@@ -116,7 +112,7 @@ if __name__ == "__main__":
     optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=lr_rate, betas=(lr_b1, lr_b2))
 
 
-    ## Data pipeline
+    # Data pipeline
     transforms_ = [
         transforms.Resize((img_height, img_width), Image.BICUBIC),
         transforms.ToTensor(),
@@ -138,7 +134,7 @@ if __name__ == "__main__":
     )
 
 
-    ## Training pipeline
+    # Training pipeline
     for epoch in range(epoch, num_epochs):
         for i, batch in enumerate(dataloader):
             # Model inputs
@@ -150,7 +146,7 @@ if __name__ == "__main__":
             fake = torch.zeros((imgs_distorted.size(0), *patch), device=device, dtype=torch.float32,
                                requires_grad=False)
 
-            ## Train Discriminator
+            # Train Discriminator
             optimizer_D.zero_grad() # clears prev. computed gradients
             imgs_fake = generator(imgs_distorted)
             pred_real = discriminator(imgs_good_gt, imgs_distorted)
@@ -162,21 +158,21 @@ if __name__ == "__main__":
             loss_D.backward()
             optimizer_D.step()
 
-            ## Train Generator
+            # Train Generator
             optimizer_G.zero_grad() # clears prev. computed gradients
             imgs_fake = generator(imgs_distorted)
             pred_fake = discriminator(imgs_fake, imgs_distorted)
             loss_GAN =  Adv_cGAN(pred_fake, valid) # GAN loss
             loss_1 = L1_G(imgs_fake, imgs_good_gt) # similarity loss
-            loss_con = L_vgg(imgs_fake, imgs_good_gt)# content loss
+            loss_con = L_vgg(imgs_fake, imgs_good_gt) # content loss
 
             # New color balance loss
-            #loss_color = color_balance_loss(imgs_fake)
+            loss_color = color_balance_loss(imgs_fake)
 
             # Update total generator loss (adding color balance loss with a small weight)
-            lambda_color = 1.5
-            #loss_G = loss_GAN + lambda_1 * loss_1 + lambda_con * loss_con + lambda_color * loss_color
-            loss_G = loss_GAN + lambda_1 * loss_1 + lambda_con * loss_con
+            lambda_color = 3
+            loss_G = loss_GAN + lambda_1 * loss_1 + lambda_con * loss_con + lambda_color * loss_color
+
             # Total loss (Section 3.2.1 in the paper)
             # loss_G = loss_GAN + lambda_1 * loss_1  + lambda_con * loss_con
             loss_G.backward()
@@ -186,7 +182,7 @@ if __name__ == "__main__":
             loss_D_list.append(loss_D.item())
             loss_G_list.append(loss_G.item())
 
-            ## Print log
+            # Print log
             if not i%50:
                 sys.stdout.write("\r[Epoch %d/%d: batch %d/%d] [DLoss: %.3f, GLoss: %.3f, AdvLoss: %.3f]"
                                   %(
@@ -194,7 +190,7 @@ if __name__ == "__main__":
                                     loss_D.item(), loss_G.item(), loss_GAN.item(),
                                    )
                 )
-            ## If at sample interval save image
+
             batches_done = epoch * len(dataloader) + i
             if batches_done % val_interval == 0:
                 imgs = next(iter(val_dataloader))
@@ -218,7 +214,7 @@ if __name__ == "__main__":
     plt.grid(True)
     plt.show()
 
-    # === Force final save ===
+    # === Force final save for safety ===
     torch.save(generator.state_dict(), "checkpoints/FunieGAN/EUVP/generator_final.pth")
     torch.save(discriminator.state_dict(), "checkpoints/FunieGAN/EUVP/discriminator_final.pth")
 
