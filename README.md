@@ -162,7 +162,7 @@ rust/
    cargo run
    ```
 
-Make sure the FastAPI server is running at `http://localhost:8000` before starting the Rust client.
+For the FastAPI make sure the FastAPI server is running at `http://localhost:8000` before starting the Rust client.
 
 
 
