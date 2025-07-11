@@ -1,1 +1,0 @@
-Device: mps, Avg FPS: 53.451, Avg Time per image: 0.0187 sec
