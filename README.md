@@ -122,6 +122,48 @@ python fastAPI.py
 - Optimized for real-time CPU-only inference under 500 ms.
 
 
+#  Rust Deployment
+
+This project includes several Rust clients to interface with the FastAPI server for model inference.
+
+### Directory Structure
+
+```
+rust/
+├── src/
+│   ├── main_fastAPI.rs     # Sends a single image to the FastAPI endpoint
+│   ├── main_multi.rs       # Sends multiple images in a loop
+│   ├── main_og.rs          # Original/basic version
+│   ├── main_resize.rs      # Includes client-side resizing before upload
+├── Cargo.toml              # Project dependencies
+├── Cargo.lock              # Auto-generated lockfile
+├── README.md               # (This file)
+└── shell.nix               # Environment setup for Nix users
+```
+
+### 🛠️ How to Use
+
+1. **Choose the client** you want to use (e.g., `main_fastAPI.rs`, `main_resize.rs`, etc.).
+2. **Rename it to `main.rs`:**
+
+   ```bash
+   mv rust/src/main_fastAPI.rs rust/src/main.rs
+   ```
+
+3. **Navigate to the `rust/` directory:**
+
+   ```bash
+   cd rust
+   ```
+
+4. **Build and run the project:**
+
+   ```bash
+   cargo build
+   cargo run
+   ```
+
+Make sure the FastAPI server is running at `http://localhost:8000` before starting the Rust client.
 
 
 
