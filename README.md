@@ -131,13 +131,12 @@ This project includes several Rust clients to interface with the FastAPI server 
 ```
 rust/
 ├── src/
-│   ├── main_fastAPI.rs     # Sends a single image to the FastAPI endpoint
-│   ├── main_multi.rs       # Sends multiple images in a loop
+│   ├── main_fastAPI.rs     # Sends images to the FastAPI endpoint
+│   ├── main_multi.rs       # Uses multi-threading when processing images
 │   ├── main_og.rs          # Original/basic version
 │   ├── main_resize.rs      # Includes client-side resizing before upload
 ├── Cargo.toml              # Project dependencies
 ├── Cargo.lock              # Auto-generated lockfile
-├── README.md               # (This file)
 └── shell.nix               # Environment setup for Nix users
 ```
 
