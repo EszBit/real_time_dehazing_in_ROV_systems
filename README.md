@@ -2,8 +2,6 @@
 
 This repository contains the implementation and optimization pipeline for training and deploying an underwater image enhancement model, developed as part of a master's thesis project. It builds upon the architecture introduced in [Fast Underwater Image Enhancement for Improved Visual Perception (RA-L 2020)](https://ieeexplore.ieee.org/document/9001231), adapting it for real-time inference on remotely operated vehicles (ROVs).
 
-![funie-fig](/data/funie.jpg)
-
 ## 🔍 Project Overview
 
 The goal of this project is to develop a robust and lightweight underwater dehazing model that performs well on real-world data from ROV-mounted cameras. While the original FUnIE-GAN model provides a strong foundation, additional training, fine-tuning, and optimization were necessary to adapt it for real-time, CPU-only operation in constrained environments.
