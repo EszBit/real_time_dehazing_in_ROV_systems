@@ -22,3 +22,9 @@ funiegan_model_ort/
 
 # files
 *.onnx
+
+# Rust
+rust/target/
+rust/profiles/
+rust/.DS_Store
+rust/.envrc

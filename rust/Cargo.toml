@@ -1,0 +1,15 @@
+[package]
+name = "rust"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+image = "0.25.6"
+ndarray = "0.15.6"
+ort = { version = "1.16.3", features = ["load-dynamic", "coreml"] }
+reqwest = { version = "0.11", features = ["blocking", "multipart"] }
+rayon = "1.7"
+crossbeam-channel = "0.5"
+
+[profile.release]
+debug = "line-tables-only" # Enables source line debug info - helps with profiling
